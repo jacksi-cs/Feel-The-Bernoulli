@@ -1,0 +1,82 @@
+---
+title: "Exploratory KWH"
+author: "Xinyu"
+date: "4/24/2021"
+output: html_document
+---
+
+``` {r }
+elec <- read.csv("elec_final_data_hackathon.csv")
+
+water <- read.csv("water_final_data_hackathon.csv")
+
+water_outlier_threshold <- mean(water$hourly_gal) + 4 * sd(water$hourly_gal)
+
+water <- water[water$hourly_gal < water_outlier_threshold,]
+
+library(lubridate)
+extract_Date_Hour <- function(data){
+  data$hourly_time <- format(as.POSIXct(data$hourly_time))
+  data$date <- format(as.POSIXct(data$hourly_time), format = '%Y-%m-%d')
+  data$month <- month(as.POSIXct(data$hourly_time))
+  data$hour <- hour(as.POSIXct(data$hourly_time))
+  return(data)
+}
+
+
+get_household_avg <- function(data, variable){
+  output <- aggregate(data[variable],list(data$hourly_time),mean)
+  colnames(output) <- c("hourly_time", variable)
+  return(extract_Date_Hour(output))
+}
+
+elec_household <- get_household_avg(elec, "hourly_kwh")
+
+mean(aggregate(elec_household$hourly_kwh, list(elec_household$date), sum)$x)
+
+water_household <- get_household_avg(water, "hourly_gal")
+
+hist(aggregate(elec_household$hourly_kwh, list(elec_household$date), sum)$x, main = "Daily Electricity Demand", xlab = "Daily Electricity Usage(kwh)")
+
+get_trend <- function(household_data, variable, axis){
+  daily_trend <- merge(aggregate(household_data[variable], household_data[axis], mean),
+aggregate(household_data[variable], household_data[axis], sd), by = axis)
+  colnames(daily_trend) <- c("hour", "mean", "sd")
+  return(daily_trend)
+}
+
+visualise_trend <- function(trend_data, y.name, x.name, ylim, offset){
+  plot(trend_data$mean, type = 'l', ylim = ylim, xlab = x.name, ylab = y.name)
+
+  x <- trend_data$hour + offset
+  
+  y <- data.frame(trend_data$mean + trend_data$sd, trend_data$mean - trend_data$sd)
+  colnames(y) <- c("upr", "lwr")
+  CI.x.top <- rev(x) # x values going forward
+  CI.x.bot <- x # x values backwards
+  CI.x <- c(CI.x.top, CI.x.bot)
+
+  CI.y.top <- rev(y$upr) # x values going forward
+  CI.y.bot <- y$lwr # x values backwards
+  CI.y <- c(CI.y.top, CI.y.bot)
+
+  CI.col <- adjustcolor("blue",alpha.f=0.25) # Pick a pretty CI color
+  polygon(CI.x, CI.y, col=CI.col, border=NA)
+}
+
+visualise_trend(get_trend(elec_household, "hourly_kwh", "hour"), "mean_hourly_kwh", "hour", c(0,3), 1)
+
+visualise_trend(get_trend(elec_household, "hourly_kwh", "month"), "mean_hourly_kwh", "month", c(0,3), 0)
+
+visualise_trend(get_trend(water_household, "hourly_gal", "hour"), "mean_hourly_gal", "hour", c(0,20), 1)
+
+visualise_trend(get_trend(water_household, "hourly_gal", "month"), "mean_hourly_gal", "month", c(0,20), 0)
+
+jan <- elec_household[elec_household$month == 1,]$hourly_kwh
+
+sum(jan < 1)/length(jan)
+
+hist(jan, main = "January Electricity Usage", xlab = "mean hourly electricity per household")
+
+get_trend(elec_household, "hourly_kwh", "month")
+```
